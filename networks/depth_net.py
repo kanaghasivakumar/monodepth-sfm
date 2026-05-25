@@ -139,9 +139,12 @@ class DepthNet(nn.Module):
         self.max_disp = 1.0 / min_depth
 
         # --- Encoder: ResNet18 pretrained on ImageNet ---
-        resnet = models.resnet18(
-            weights=models.ResNet18_Weights.DEFAULT if pretrained else None
+        resnet = models.resnet18(weights=None)
+        ckpt = torch.load(
+            '/home/omb8654/.cache/torch/hub/checkpoints/resnet18-f37072fd.pth',
+            map_location='cpu'
         )
+        resnet.load_state_dict(ckpt)
 
         # Extract feature stages individually to capture skip connections
         self.encoder = nn.ModuleDict({
