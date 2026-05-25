@@ -45,29 +45,21 @@ class BackprojectDepth(torch.nn.Module):
         )
 
     def forward(self, depth, K_inv):
-        """
-        Args:
-            depth:  [B, 1, H, W]
-            K_inv:  [B, 3, 3]
-
-        Returns:
-            cam_points: [B, 4, H*W]  (X, Y, Z, 1) homogeneous
-        """
+        B = depth.shape[0]
+        
         # Flatten depth: [B, 1, H*W]
-        depth_flat = depth.view(self.B, 1, -1)
+        depth_flat = depth.view(B, 1, -1)
 
-        # Unproject: K_inv @ pixel_coords => [B, 3, H*W]
-        # Each column is the unit ray direction for that pixel
-        cam_points = torch.bmm(K_inv, self.pixel_coords)  # [B, 3, H*W]
+        # Use the registered buffer but slice to actual batch size
+        pixel_coords = self.pixel_coords[:B]  # [B, 3, H*W]
 
-        # Scale by depth to get actual 3D position
-        # depth_flat broadcasts across X/Y/Z channels
-        cam_points = cam_points * depth_flat               # [B, 3, H*W]
+        # Unproject
+        cam_points = torch.bmm(K_inv, pixel_coords)  # [B, 3, H*W]
+        cam_points = cam_points * depth_flat          # [B, 3, H*W]
 
-        # Append homogeneous coordinate: [B, 4, H*W]
-        ones = torch.ones(self.B, 1, self.H * self.W,
-                          dtype=cam_points.dtype,
-                          device=cam_points.device)
+        ones = torch.ones(B, 1, self.H * self.W,
+                        dtype=cam_points.dtype,
+                        device=cam_points.device)
         cam_points = torch.cat([cam_points, ones], dim=1)  # [B, 4, H*W]
 
         return cam_points
@@ -101,52 +93,26 @@ class Project3DPoints(torch.nn.Module):
         self.eps = eps  # guards against division by near-zero depth
 
     def forward(self, cam_points, K, T):
-        """
-        Args:
-            cam_points: [B, 4, H*W]
-            K:          [B, 3, 3]
-            T:          [B, 4, 4]
+        B = cam_points.shape[0]
+        
+        P = torch.bmm(T, cam_points)
+        X = P[:, 0]
+        Y = P[:, 1]
+        Z = P[:, 2].clamp(min=self.eps)
 
-        Returns:
-            pix_coords: [B, H, W, 2]
-            depth_proj: [B, 1, H, W]
-        """
-        # --- Step 1: Rigid transform into target frame ---
-        # T @ cam_points: [B, 4, 4] x [B, 4, H*W] => [B, 4, H*W]
-        P = torch.bmm(T, cam_points)   # [B, 4, H*W]
+        cam_points_norm = torch.stack([X/Z, Y/Z, torch.ones_like(X)], dim=1)
+        pix_homogeneous = torch.bmm(K, cam_points_norm)
 
-        # Extract X, Y, Z — clamp Z to avoid divide-by-zero
-        X = P[:, 0]                    # [B, H*W]
-        Y = P[:, 1]                    # [B, H*W]
-        Z = P[:, 2].clamp(min=self.eps)# [B, H*W]
-
-        # --- Step 2: Project using intrinsics ---
-        # Form [X, Y, 1] * (1/Z), then apply K
-        # cam_points_norm: [B, 3, H*W]
-        cam_points_norm = torch.stack([
-            X / Z,
-            Y / Z,
-            torch.ones_like(X)
-        ], dim=1)                      # [B, 3, H*W]
-
-        # pix_homogeneous: K @ cam_points_norm => [B, 3, H*W]
-        pix_homogeneous = torch.bmm(K, cam_points_norm)  # [B, 3, H*W]
-
-        # u, v pixel coordinates: [B, H*W] each
         u = pix_homogeneous[:, 0]
         v = pix_homogeneous[:, 1]
 
-        # --- Step 3: Normalize to [-1, 1] for F.grid_sample ---
-        # grid_sample expects x in [-1,1] where -1 = left/top, +1 = right/bottom
-        u_norm = (u / (self.W - 1)) * 2.0 - 1.0  # [B, H*W]
-        v_norm = (v / (self.H - 1)) * 2.0 - 1.0  # [B, H*W]
+        u_norm = (u / (self.W - 1)) * 2.0 - 1.0
+        v_norm = (v / (self.H - 1)) * 2.0 - 1.0
 
-        # Stack and reshape to [B, H, W, 2] — grid_sample convention: (x, y)
-        pix_coords = torch.stack([u_norm, v_norm], dim=2)   # [B, H*W, 2]
-        pix_coords = pix_coords.view(self.B, self.H, self.W, 2)
+        pix_coords = torch.stack([u_norm, v_norm], dim=2)
+        pix_coords = pix_coords.view(B, self.H, self.W, 2)
 
-        # Projected depth in target frame
-        depth_proj = Z.view(self.B, 1, self.H, self.W)
+        depth_proj = Z.view(B, 1, self.H, self.W)
 
         return pix_coords, depth_proj
 
