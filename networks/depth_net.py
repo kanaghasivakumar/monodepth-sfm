@@ -69,47 +69,31 @@ class DepthDecoder(nn.Module):
         )
 
     def forward(self, encoder_features):
-        """
-        Args:
-            encoder_features: list of 5 tensors from ResNet18 encoder
-                [feat0, feat1, feat2, feat3, feat4]
-                shapes: [B,64,H/2,W/2], [B,64,H/4,W/4], [B,128,H/8,W/8],
-                        [B,256,H/16,W/16], [B,512,H/32,W/32]
-
-        Returns:
-            disps: dict with keys 0,1,2,3 mapping to disparity maps
-                   ALL upsampled to full [B, 1, H, W] resolution
-        """
         f0, f1, f2, f3, f4 = encoder_features
 
-        # --- Decode upward with skip connections ---
-        # Each step: upsample 2x, concat skip, refine with conv
-
         x = F.interpolate(f4, scale_factor=2, mode='nearest')
-        x = self.upconv4(x)                             # [B, 256, H/16, W/16]
+        x = self.upconv4(x)
 
-        x = F.interpolate(x, scale_factor=2, mode='nearest')
+        x = F.interpolate(x, size=f3.shape[2:], mode='nearest')
         x = torch.cat([x, f3], dim=1)
-        x = self.upconv3(x)                             # [B, 128, H/8, W/8]
-        disp3_raw = self.disp3(x)                       # [B, 1, H/8, W/8]
+        x = self.upconv3(x)
+        disp3_raw = self.disp3(x)
 
-        x = F.interpolate(x, scale_factor=2, mode='nearest')
+        x = F.interpolate(x, size=f2.shape[2:], mode='nearest')
         x = torch.cat([x, f2], dim=1)
-        x = self.upconv2(x)                             # [B, 64, H/4, W/4]
-        disp2_raw = self.disp2(x)                       # [B, 1, H/4, W/4]
+        x = self.upconv2(x)
+        disp2_raw = self.disp2(x)
 
-        x = F.interpolate(x, scale_factor=2, mode='nearest')
+        x = F.interpolate(x, size=f1.shape[2:], mode='nearest')
         x = torch.cat([x, f1], dim=1)
-        x = self.upconv1(x)                             # [B, 32, H/2, W/2]
-        disp1_raw = self.disp1(x)                       # [B, 1, H/2, W/2]
+        x = self.upconv1(x)
+        disp1_raw = self.disp1(x)
 
-        x = F.interpolate(x, scale_factor=2, mode='nearest')
+        x = F.interpolate(x, size=f0.shape[2:], mode='nearest')
         x = torch.cat([x, f0], dim=1)
-        x = self.upconv0(x)                             # [B, 16, H, W]
-        disp0_raw = self.disp0(x)                       # [B, 1, H, W]
+        x = self.upconv0(x)
+        disp0_raw = self.disp0(x)
 
-        # --- Upsample ALL scales to full resolution before loss computation ---
-        # This avoids texture-copy artifacts from computing loss on downsampled targets
         H, W = disp0_raw.shape[2], disp0_raw.shape[3]
         disps = {
             0: disp0_raw,
@@ -117,7 +101,6 @@ class DepthDecoder(nn.Module):
             2: F.interpolate(disp2_raw, size=(H, W), mode='bilinear', align_corners=True),
             3: F.interpolate(disp3_raw, size=(H, W), mode='bilinear', align_corners=True),
         }
-
         return disps
 
 
