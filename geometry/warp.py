@@ -69,7 +69,7 @@ class Project3DPoints(torch.nn.Module):
 
     def forward(self, cam_points, K, T):
         B = cam_points.shape[0]
-        
+
         P = torch.bmm(T, cam_points)
         X = P[:, 0]
         Y = P[:, 1]
@@ -84,8 +84,8 @@ class Project3DPoints(torch.nn.Module):
         u_norm = (u / (self.W - 1)) * 2.0 - 1.0
         v_norm = (v / (self.H - 1)) * 2.0 - 1.0
 
-        pix_coords = torch.stack([u_norm, v_norm], dim=2)
-        pix_coords = pix_coords.view(B, self.H, self.W, 2)
+        pix_coords = torch.stack([u_norm, v_norm], dim=2)  # [B, H*W, 2]
+        pix_coords = pix_coords.view(B, self.H, self.W, 2) # [B, H, W, 2]
 
         depth_proj = Z.view(B, 1, self.H, self.W)
 
