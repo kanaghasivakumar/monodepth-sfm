@@ -68,10 +68,10 @@ class DepthDecoder(nn.Module):
             nn.Sigmoid()
         )
 
-    def forward(self, encoder_features):
+    def forward(self, encoder_features, input_size=None):
         f0, f1, f2, f3, f4 = encoder_features
 
-        x = F.interpolate(f4, scale_factor=2, mode='nearest')
+        x = F.interpolate(f4, size=f3.shape[2:], mode='nearest')
         x = self.upconv4(x)
 
         x = F.interpolate(x, size=f3.shape[2:], mode='nearest')
@@ -94,15 +94,20 @@ class DepthDecoder(nn.Module):
         x = self.upconv0(x)
         disp0_raw = self.disp0(x)
 
-        H, W = disp0_raw.shape[2], disp0_raw.shape[3]
+        # f0 is H/2 x W/2 — upsample everything to full res
+        if input_size is not None:
+            H, W = input_size
+        else:
+            H, W = f0.shape[2] * 2, f0.shape[3] * 2
+
+        full = lambda d: F.interpolate(d, size=(H, W), mode='bilinear', align_corners=True)
+
         disps = {
-            0: disp0_raw,
-            1: F.interpolate(disp1_raw, size=(H, W), mode='bilinear', align_corners=True),
-            2: F.interpolate(disp2_raw, size=(H, W), mode='bilinear', align_corners=True),
-            3: F.interpolate(disp3_raw, size=(H, W), mode='bilinear', align_corners=True),
+            0: full(disp0_raw),
+            1: full(disp1_raw),
+            2: full(disp2_raw),
+            3: full(disp3_raw),
         }
-        for s, d in disps.items():
-            print(f"decoder disp[{s}]:", d.shape)
         return disps
 
 
@@ -144,26 +149,16 @@ class DepthNet(nn.Module):
         self.decoder = DepthDecoder()
 
     def forward(self, x):
-        """
-        Args:
-            x: [B, 3, H, W] — normalized input frame
+        H, W = x.shape[2], x.shape[3]
+        f0 = self.encoder['layer0'](x)
+        p  = self.encoder['pool'](f0)
+        f1 = self.encoder['layer1'](p)
+        f2 = self.encoder['layer2'](f1)
+        f3 = self.encoder['layer3'](f2)
+        f4 = self.encoder['layer4'](f3)
 
-        Returns:
-            disps: dict {0: [B,1,H,W], 1: [B,1,H,W], 2: [B,1,H,W], 3: [B,1,H,W]}
-            depths: dict {0: [B,1,H,W], ...} — converted depth maps
-        """
-        # --- Encode ---
-        f0 = self.encoder['layer0'](x)         # [B, 64,  H/2,  W/2]
-        p  = self.encoder['pool'](f0)           # [B, 64,  H/4,  W/4]
-        f1 = self.encoder['layer1'](p)          # [B, 64,  H/4,  W/4]
-        f2 = self.encoder['layer2'](f1)         # [B, 128, H/8,  W/8]
-        f3 = self.encoder['layer3'](f2)         # [B, 256, H/16, W/16]
-        f4 = self.encoder['layer4'](f3)         # [B, 512, H/32, W/32]
+        disps = self.decoder([f0, f1, f2, f3, f4], input_size=(H, W))
 
-        # --- Decode ---
-        disps = self.decoder([f0, f1, f2, f3, f4])
-
-        # --- Convert disparity to metric depth ---
         depths = {}
         for s, d in disps.items():
             depths[s] = 1.0 / (self.min_disp + (self.max_disp - self.min_disp) * d)
