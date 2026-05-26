@@ -127,6 +127,8 @@ def training_step(batch, depth_net, pose_net, backproject, project,
     # Use full-resolution depth for warping
     depth_full = depths[0]   # [B, 1, H, W]
     print("depth_full shape:", depth_full.shape)
+    for s, d in disps.items():
+        print(f"disp[{s}] shape:", d.shape)
 
     # --- Step 2: Predict relative poses ---
     # Two forward passes: (I_t, I_t-1) and (I_t, I_t+1)
