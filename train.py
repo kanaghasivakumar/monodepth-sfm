@@ -157,11 +157,6 @@ def training_step(batch, depth_net, pose_net, backproject, project,
         project=project
     )  # [B, 3, H, W]
 
-    print("warped_prev shape:", warped_prev.shape)
-    print("warped_next shape:", warped_next.shape)
-    print("target_raw shape:", target_raw.shape)
-    print("depth_full shape:", depth_full.shape)
-    
     # --- Step 4: Compute loss ---
     # SfMLoss expects lists of warped and source frames
     loss, loss_breakdown = loss_fn(

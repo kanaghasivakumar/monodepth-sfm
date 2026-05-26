@@ -114,7 +114,7 @@ def inverse_warp(source_frame, depth, K, K_inv, T,
         project:      Project3DPoints instance
 
     Returns:
-        warped:       [B, 3, H, W]  — synthesized I_t_prime
+        warped:       [B, 3, H, W]  — synthesized I_t_lsme
         pix_coords:   [B, H, W, 2]  — sampling grid (useful for mask computation)
         depth_proj:   [B, 1, H, W]  — projected depth
     """
