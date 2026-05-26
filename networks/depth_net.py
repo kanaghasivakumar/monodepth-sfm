@@ -101,6 +101,8 @@ class DepthDecoder(nn.Module):
             2: F.interpolate(disp2_raw, size=(H, W), mode='bilinear', align_corners=True),
             3: F.interpolate(disp3_raw, size=(H, W), mode='bilinear', align_corners=True),
         }
+        for s, d in disps.items():
+            print(f"decoder disp[{s}]:", d.shape)
         return disps
 
 
