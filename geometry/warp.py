@@ -3,64 +3,39 @@ import torch.nn.functional as F
 
 
 class BackprojectDepth(torch.nn.Module):
-    """
-    Unprojects a 2D pixel grid into 3D camera coordinates using predicted depth
-    and the inverse intrinsic matrix K_inv.
-
-    For each pixel (u, v) with depth d:
-        P_cam = d * K_inv * [u, v, 1]^T
-
-    Input:
-        depth:  [B, 1, H, W]  — predicted inverse depth (disparity), converted to depth
-        K_inv:  [B, 3, 3]     — inverse of camera intrinsic matrix
-
-    Output:
-        cam_points: [B, 4, H*W] — homogeneous 3D points in camera space
-    """
-
     def __init__(self, batch_size, height, width):
         super().__init__()
         self.B = batch_size
         self.H = height
         self.W = width
 
-        # Build the static pixel coordinate grid once, register as buffer
-        # so it moves with .to(device) automatically
+    def forward(self, depth, K_inv):
+        B, _, H, W = depth.shape
+
+        # Build pixel grid dynamically to match actual input dims
         meshgrid = torch.meshgrid(
-            torch.arange(width, dtype=torch.float32),
-            torch.arange(height, dtype=torch.float32),
+            torch.arange(W, dtype=torch.float32, device=depth.device),
+            torch.arange(H, dtype=torch.float32, device=depth.device),
             indexing='xy'
         )
-        # u_coords: [H, W], v_coords: [H, W]
-        u_coords = meshgrid[0].reshape(1, -1)   # [1, H*W]
-        v_coords = meshgrid[1].reshape(1, -1)   # [1, H*W]
-        ones     = torch.ones_like(u_coords)     # [1, H*W]
+        u_coords = meshgrid[0].reshape(1, -1).expand(B, -1)   # [B, H*W]
+        v_coords = meshgrid[1].reshape(1, -1).expand(B, -1)   # [B, H*W]
+        ones     = torch.ones_like(u_coords)                   # [B, H*W]
 
-        # pixel_coords: [1, 3, H*W] — homogeneous pixel coordinates
+        # pixel_coords: [B, 3, H*W]
         pixel_coords = torch.stack([u_coords, v_coords, ones], dim=1)
-        # Expand to [B, 3, H*W]
-        self.register_buffer(
-            'pixel_coords',
-            pixel_coords.expand(batch_size, -1, -1)
-        )
 
-    def forward(self, depth, K_inv):
-        B = depth.shape[0]
-        
         # Flatten depth: [B, 1, H*W]
         depth_flat = depth.view(B, 1, -1)
-
-        # Use the registered buffer but slice to actual batch size
-        pixel_coords = self.pixel_coords[:B]  # [B, 3, H*W]
 
         # Unproject
         cam_points = torch.bmm(K_inv, pixel_coords)  # [B, 3, H*W]
         cam_points = cam_points * depth_flat          # [B, 3, H*W]
 
-        ones = torch.ones(B, 1, self.H * self.W,
-                        dtype=cam_points.dtype,
-                        device=cam_points.device)
-        cam_points = torch.cat([cam_points, ones], dim=1)  # [B, 4, H*W]
+        ones_hom = torch.ones(B, 1, H * W,
+                              dtype=cam_points.dtype,
+                              device=cam_points.device)
+        cam_points = torch.cat([cam_points, ones_hom], dim=1)  # [B, 4, H*W]
 
         return cam_points
 
