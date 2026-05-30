@@ -270,7 +270,6 @@ def train(config):
         factor=config['lr_factor'],
         patience=config['lr_patience'],
         min_lr=config['min_lr'],
-        verbose=True
     )
 
     # --- Logging ---
