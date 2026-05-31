@@ -38,7 +38,7 @@ CONFIG = {
     # Optimization
     'lr':               1e-4,
     'weight_decay':     1e-5,
-    'num_epochs':       50,
+    'num_epochs':       100,
 
     # ReduceLROnPlateau
     'lr_patience':      3,       # epochs with no improvement before LR drop
