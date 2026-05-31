@@ -46,7 +46,10 @@ CONFIG = {
     'min_lr':           1e-6,    # floor on LR
 
     # Early stopping
-    'early_stop_patience': 8,    # epochs with no improvement before stopping
+    'early_stop_patience': 8,
+
+    # Resume
+    'resume_ckpt': 'checkpoints/best_checkpoint.pth',  # set to None to start fresh
 
     # Logging
     'log_dir':      'runs/sfm_learner',
@@ -285,10 +288,32 @@ def train(config):
 
     global_step = 0
 
+    start_epoch = 1
+    best_ckpt_path = os.path.join(config['save_dir'], 'best_checkpoint.pth')
+
+    resume_path = config.get('resume_ckpt')
+    if resume_path and os.path.exists(resume_path):
+        print(f"Resuming from {resume_path}...")
+        ckpt = torch.load(resume_path, map_location=device)
+        depth_net.load_state_dict(ckpt['depth_net'])
+        pose_net.load_state_dict(ckpt['pose_net'])
+        optimizer.load_state_dict(ckpt['optimizer'])
+        scheduler.load_state_dict(ckpt['scheduler'])
+        history            = ckpt['history']
+        start_epoch        = ckpt['epoch'] + 1
+        best_loss          = min(history['total'])
+        best_epoch         = history['total'].index(best_loss)
+        early_stop_counter = len(history['total']) - 1 - best_epoch
+        global_step        = (start_epoch - 1) * len(train_loader)
+        print(f"Resumed from epoch {ckpt['epoch']}, best loss {best_loss:.4f}, "
+            f"early stop counter {early_stop_counter}")
+    else:
+        print("Starting from scratch.")
+
     # Keep one fixed batch for consistent epoch visualizations
     viz_batch = None
 
-    for epoch in range(1, config['num_epochs'] + 1):
+    for epoch in range(start_epoch, config['num_epochs'] + 1):
         depth_net.train()
         pose_net.train()
 
