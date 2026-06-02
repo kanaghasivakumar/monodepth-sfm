@@ -186,6 +186,15 @@ def evaluate(config):
             ).squeeze().cpu().numpy()
             
             gt_depth = generate_depth_map(calib_dir, velo_path, (orig_h, orig_w))
+
+            gt_nonzero = gt_depth[gt_depth > 0]
+            if len(gt_nonzero) > 0 and len(errors) < 3:  # only print first 3 frames
+                print(f"GT depth — min: {gt_nonzero.min():.2f}, max: {gt_nonzero.max():.2f}, "
+                    f"median: {np.median(gt_nonzero):.2f}, points: {len(gt_nonzero)}")
+                print(f"Pred depth — min: {pred_depth_resized.min():.4f}, "
+                    f"max: {pred_depth_resized.max():.4f}, "
+                    f"median: {np.median(pred_depth_resized):.4f}")
+                print(f"Scale ratio: {np.median(gt_nonzero) / np.median(pred_depth_resized):.2f}")
             
             crop = np.array([0.40810811 * orig_h, 0.99189189 * orig_h,
                              0.03594771 * orig_w, 0.96405229 * orig_w]).astype(np.int32)
@@ -201,11 +210,10 @@ def evaluate(config):
             
             if len(gt_valid) > 0:
                 ratio = np.median(gt_valid) / np.median(pred_valid)
+                ratio = np.clip(ratio, 0.1, 100.0)
                 pred_valid *= ratio
-                
-                pred_valid[pred_valid < config['min_depth']] = config['min_depth']
-                pred_valid[pred_valid > config['max_depth']] = config['max_depth']
-                
+
+                pred_valid = np.clip(pred_valid, config['min_depth'], config['max_depth'])
                 errors.append(compute_errors(gt_valid, pred_valid))
 
     mean_errors = np.array(errors).mean(0)
