@@ -70,6 +70,7 @@ def read_calib_file(filepath):
 def generate_depth_map(calib_dir, velo_filename, im_shape):
     """
     Projects Velodyne sparse point cloud into the camera image plane.
+    Handles both KITTI Raw (R, T) and KITTI Odometry (Tr) calib formats.
     """
     cam2cam = read_calib_file(os.path.join(calib_dir, 'calib_cam_to_cam.txt'))
     velo2cam = read_calib_file(os.path.join(calib_dir, 'calib_velo_to_cam.txt'))
@@ -79,8 +80,15 @@ def generate_depth_map(calib_dir, velo_filename, im_shape):
     R_rect = np.eye(4)
     R_rect[:3, :3] = cam2cam['R_rect_00'].reshape(3, 3)
     
+    # Construct the Velodyne to Camera rigid transformation
     Tr_velo_to_cam = np.eye(4)
-    Tr_velo_to_cam[:3, :4] = velo2cam['Tr'].reshape(3, 4)
+    if 'Tr' in velo2cam:
+        Tr_velo_to_cam[:3, :4] = velo2cam['Tr'].reshape(3, 4)
+    elif 'R' in velo2cam and 'T' in velo2cam:
+        Tr_velo_to_cam[:3, :3] = velo2cam['R'].reshape(3, 3)
+        Tr_velo_to_cam[:3, 3] = velo2cam['T']
+    else:
+        raise KeyError(f"Could not find 'Tr' or 'R'/'T' keys in {os.path.join(calib_dir, 'calib_velo_to_cam.txt')}")
 
     scan = np.fromfile(velo_filename, dtype=np.float32).reshape(-1, 4)
     pts_3d = scan[:, :3]
