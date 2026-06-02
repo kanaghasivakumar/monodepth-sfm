@@ -137,7 +137,7 @@ def evaluate(config):
     ).to(device)
     
     depth_net.load_state_dict(ckpt['depth_net'])
-    depth_net.eval()
+    depth_net.train()
 
     normalize = T.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
     to_tensor = T.ToTensor()
@@ -176,7 +176,7 @@ def evaluate(config):
             orig_w, orig_h = img.size
             
             img_resized = img.resize((config['width'], config['height']), Image.LANCZOS)
-            input_tensor = normalize(to_tensor(img_resized)).unsqueeze(0).to(device)
+            input_tensor = to_tensor(img_resized).unsqueeze(0).to(device)
             
             _, depths = depth_net(input_tensor)
             pred_depth = depths[0]
