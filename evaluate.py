@@ -5,7 +5,6 @@ import torch.nn.functional as F
 import numpy as np
 from PIL import Image
 import torchvision.transforms as T
-import wandb
 from tqdm import tqdm
 
 from train import CONFIG
@@ -119,15 +118,6 @@ def evaluate(config):
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     print(f"Evaluating on: {device}")
 
-    # Set up W&B offline matching your train environment
-    os.environ["WANDB_MODE"] = "offline"
-    wandb.init(
-        project="monodepth-sfm",
-        name="eigen_split_eval",
-        config=config,
-        job_type="evaluation"
-    )
-
     print(f"Loading checkpoint: {config['resume_ckpt']}")
     ckpt = torch.load(config['resume_ckpt'], map_location=device)
     
@@ -220,18 +210,6 @@ def evaluate(config):
     print(f"δ < 1.25:   {a1:.4f}")
     print(f"δ < 1.25²:  {a2:.4f}")
     print(f"δ < 1.25³:  {a3:.4f}")
-
-    wandb.log({
-        "eval/AbsRel": abs_rel,
-        "eval/SqRel": sq_rel,
-        "eval/RMSE": rmse,
-        "eval/RMSE_log": rmse_log,
-        "eval/delta_1.25": a1,
-        "eval/delta_1.25_sq": a2,
-        "eval/delta_1.25_cube": a3,
-    })
-    
-    wandb.finish()
 
 if __name__ == '__main__':
     evaluate(CONFIG)
