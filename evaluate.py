@@ -101,6 +101,8 @@ def generate_depth_map(calib_dir, velo_filename, im_shape):
     depths = pts_2d_homo[2, :]
 
     h, w = im_shape
+    pts_2d = np.int32(np.round(pts_2d))
+
     val_inds = (pts_2d[:, 0] >= 0) & (pts_2d[:, 0] < w) & \
                (pts_2d[:, 1] >= 0) & (pts_2d[:, 1] < h)
     
@@ -108,7 +110,6 @@ def generate_depth_map(calib_dir, velo_filename, im_shape):
     depths = depths[val_inds]
 
     depth_map = np.zeros((h, w))
-    pts_2d = np.int32(np.round(pts_2d))
     
     for i in range(len(pts_2d)):
         u, v = pts_2d[i, 0], pts_2d[i, 1]
