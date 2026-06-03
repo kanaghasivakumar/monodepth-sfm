@@ -167,7 +167,7 @@ def save_depth_viz(depth_tensor, target_tensor, epoch, viz_dir):
     axes[0].set_title(f'Input RGB — Epoch {epoch}')
     axes[0].axis('off')
 
-    im = axes[1].imshow(depth, cmap='plasma', vmin=0, vmax=80)
+    im = axes[1].imshow(depth, cmap='plasma', vmin=depth.min(), vmax=depth.max())
     axes[1].set_title(f'Predicted Depth — Epoch {epoch}')
     axes[1].axis('off')
     plt.colorbar(im, ax=axes[1], fraction=0.046, pad=0.04)
