@@ -92,8 +92,7 @@ def build_models(config, device):
 # Single training step
 # ---------------------------------------------------------------------------
 
-def training_step(batch, depth_net, pose_net, backproject, project,
-                  loss_fn, device):
+def training_step(batch, depth_net, pose_net, backproject, project, loss_fn, device):
     target      = batch['target'].to(device)
     source_prev = batch['source_prev'].to(device)
     source_next = batch['source_next'].to(device)
@@ -101,31 +100,41 @@ def training_step(batch, depth_net, pose_net, backproject, project,
     K_inv       = batch['K_inv'].to(device)
     target_raw  = batch['target_raw'].to(device)
 
+    mean = torch.tensor([0.485, 0.456, 0.406], device=device).view(1, 3, 1, 1)
+    std  = torch.tensor([0.229, 0.224, 0.225], device=device).view(1, 3, 1, 1)
+    source_prev_raw = source_prev * std + mean
+    source_next_raw = source_next * std + mean
+
     disps, depths = depth_net(target)
-    depth_full = depths[0]
 
     T_prev, _, _ = pose_net(target, source_prev)
     T_next, _, _ = pose_net(target, source_next)
 
-    warped_prev, _, _ = inverse_warp(
-        source_frame=source_prev,
-        depth=depth_full, K=K, K_inv=K_inv, T=T_prev,
-        backproject=backproject, project=project
-    )
-    warped_next, _, _ = inverse_warp(
-        source_frame=source_next,
-        depth=depth_full, K=K, K_inv=K_inv, T=T_next,
-        backproject=backproject, project=project
-    )
+    warped_frames_dict = {}
+    
+    for s in range(4):
+        depth_s = depths[s]
+        
+        w_prev, _, _ = inverse_warp(
+            source_frame=source_prev_raw,
+            depth=depth_s, K=K, K_inv=K_inv, T=T_prev,
+            backproject=backproject, project=project
+        )
+        w_next, _, _ = inverse_warp(
+            source_frame=source_next_raw,
+            depth=depth_s, K=K, K_inv=K_inv, T=T_next,
+            backproject=backproject, project=project
+        )
+        warped_frames_dict[s] = [w_prev, w_next]
 
     loss, loss_breakdown = loss_fn(
         target=target_raw,
-        warped_frames=[warped_prev, warped_next],
-        source_frames=[source_prev, source_next],
+        warped_frames=warped_frames_dict,
+        source_frames=[source_prev_raw, source_next_raw],
         disps=disps
     )
 
-    return loss, loss_breakdown, depth_full, target_raw
+    return loss, loss_breakdown, depths[0], target_raw
 
 
 # ---------------------------------------------------------------------------

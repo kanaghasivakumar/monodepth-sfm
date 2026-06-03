@@ -139,7 +139,6 @@ def evaluate(config):
     depth_net.load_state_dict(ckpt['depth_net'])
     depth_net.train()
 
-    normalize = T.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
     to_tensor = T.ToTensor()
 
     split_file = get_eigen_split()

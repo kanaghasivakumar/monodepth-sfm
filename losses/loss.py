@@ -254,45 +254,27 @@ class SfMLoss(nn.Module):
         self.num_scales    = num_scales
 
     def forward(self, target, warped_frames, source_frames, disps):
-        """
-        Args:
-            target:        [B, 3, H, W]  — I_t (the frame being reconstructed)
-            warped_frames: list of [B, 3, H, W] per source  — synthesized frames
-            source_frames: list of [B, 3, H, W] per source  — original source frames
-                           (used for unwarped baseline in auto-masking)
-            disps:         dict {scale: [B, 1, H, W]} — multi-scale disparities
-                           all already upsampled to full resolution
-
-        Returns:
-            total_loss:  scalar
-            loss_breakdown: dict with keys 'photo', 'smooth', 'mask'
-                            for logging/debugging
-        """
         total_loss   = 0.0
         total_photo  = 0.0
         total_smooth = 0.0
 
         for s in range(self.num_scales):
-            disp = disps[s]   # [B, 1, H, W] — already full-res
+            disp = disps[s]
+            
+            # Fetch warped frames specifically computed from scale s depth
+            warped_frames_s = warped_frames[s]
 
-            # --- Photometric error for each source frame ---
             pe_warped   = []
             pe_unwarped = []
 
-            for warped, source in zip(warped_frames, source_frames):
-                # Warped error: how well the synthesized frame matches I_t
-                pe_w = self.photometric(warped, target)         # [B, 1, H, W]
-
-                # Unwarped baseline: raw source frame vs I_t, no geometry used
-                pe_u = self.photometric(source, target)         # [B, 1, H, W]
+            for warped, source in zip(warped_frames_s, source_frames):
+                pe_w = self.photometric(warped, target)
+                pe_u = self.photometric(source, target)
 
                 pe_warped.append(pe_w)
                 pe_unwarped.append(pe_u)
 
-            # --- Auto-masked photometric loss ---
             photo_loss, mask = self.automask(pe_warped, pe_unwarped)
-
-            # --- Smoothness loss (scale-normalized) ---
             smooth_loss = self.smoothness(disp, target) / (2 ** s)
 
             scale_loss   = photo_loss + self.lambda_smooth * smooth_loss
@@ -300,13 +282,12 @@ class SfMLoss(nn.Module):
             total_photo  = total_photo  + photo_loss.item()
             total_smooth = total_smooth + smooth_loss.item()
 
-        # Average over scales
         total_loss = total_loss / self.num_scales
 
         loss_breakdown = {
             'photo':  total_photo  / self.num_scales,
             'smooth': total_smooth / self.num_scales,
-            'mask':   mask,   # return last scale's mask for visualization
+            'mask':   mask,
         }
 
         return total_loss, loss_breakdown
